@@ -32,16 +32,16 @@ set -o pipefail
 #crontab -e
 #* * * * * /root/cf-v4-ddns.sh > /dev/null 2>&1
 
-CFKEY=5d263cf94014fc968be477870c2f57a58f8bc
+CFKEY=
 
 # Username, eg: user@example.com
-CFUSER=30305600@qq.com
+CFUSER=
 
 # Zone name, eg: example.com
-CFZONE_NAME=4465656.xyz
+CFZONE_NAME=
 
 # Hostname to update, eg: homeserver.example.com
-CFRECORD_NAME=ipv6-aktw
+CFRECORD_NAME=
 
 # Record type, A(IPv4)|AAAA(IPv6), default IPv4
 CFRECORD_TYPE=AAAA
