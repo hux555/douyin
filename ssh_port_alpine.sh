@@ -1,11 +1,30 @@
 #!/bin/sh
+
 # Alpine 一键修改 SSH 端口
-# 用法：在 Alpine 机器上以 root 运行
-#   sh ssh_port_alpine.sh
-#   或 chmod +x ssh_port_alpine.sh && ./ssh_port_alpine.sh
+#
+# 用法（两种，任选其一）：
+#   sh ssh_port_alpine.sh 28467     # 端口直接写在命令里，不用等输入
+#   sh ssh_port_alpine.sh           # 再手动输入端口
+#
 # 流程（防锁死）：先让 22 和新端口同时监听，你在新窗口用新端口
 # 测试登录成功，回来按回车，脚本再关掉 22 端口，只剩新端口
 # 全程不用 systemctl，不用 ufw/firewalld，Alpine 用 OpenRC 的 rc-service
+
+# ---------- 0. 读一行输入 ----------
+# 有些终端/面板里 stdin 一开始就是 EOF，直接 read 会立刻读到空串，
+# 表现为“还没输入就报错”。所以先试 /dev/tty（真正的终端），
+# 没有终端再回落到 stdin。
+read_line() {
+    # $1 = 要存入的变量名
+    if test -t 0; then
+        read "$1"
+        return $?
+    fi
+    if read "$1" 2>/dev/null < /dev/tty; then
+        return 0
+    fi
+    read "$1"
+}
 
 # ---------- 1. 必须是 root ----------
 if test "$(id -u)" -ne 0; then
@@ -17,7 +36,7 @@ fi
 if test ! -f /etc/alpine-release; then
     echo "警告：这不是 Alpine 系统（没找到 /etc/alpine-release），继续可能有问题。"
     printf "确定继续吗？(y/N): "
-    read confirm
+    read_line confirm
     case "$confirm" in
         y|Y) ;;
         *) echo "已退出。"; exit 1 ;;
@@ -35,21 +54,49 @@ if ! command -v rc-service >/dev/null 2>&1; then
     exit 1
 fi
 
-# ---------- 3. 让用户输入想要的端口 ----------
-printf "请输入新的SSH端口号 (1-65535): "
-read new_port
-
-# 只允许纯数字
-case "$new_port" in
-    ''|*[!0-9]*)
-        echo "错误：端口必须是数字！"
+# ---------- 3. 新端口：优先用命令行参数，其次交互输入 ----------
+new_port="$1"
+if test -z "$new_port"; then
+    tries=0
+    while test "$tries" -lt 3; do
+        printf "请输入新的SSH端口号 (1-65535): "
+        if ! read_line new_port; then
+            echo ""
+            echo "错误：读不到输入（当前终端没有交互输入）。"
+            echo "请改用参数形式：sh ssh_port_alpine.sh 28467"
+            exit 1
+        fi
+        case "$new_port" in
+            ''|*[!0-9]*)
+                echo "错误：端口必须是数字！"
+                new_port=""
+                tries=$((tries + 1))
+                continue
+                ;;
+        esac
+        if test "$new_port" -lt 1 || test "$new_port" -gt 65535; then
+            echo "错误：端口必须在 1-65535 之间！"
+            new_port=""
+            tries=$((tries + 1))
+            continue
+        fi
+        break
+    done
+    if test -z "$new_port"; then
+        echo "错误：连续 3 次没有输入有效端口，退出。"
         exit 1
-        ;;
-esac
-
-if test "$new_port" -lt 1 || test "$new_port" -gt 65535; then
-    echo "错误：端口必须在 1-65535 之间！"
-    exit 1
+    fi
+else
+    case "$new_port" in
+        ''|*[!0-9]*)
+            echo "错误：端口必须是数字！"
+            exit 1
+            ;;
+    esac
+    if test "$new_port" -lt 1 || test "$new_port" -gt 65535; then
+        echo "错误：端口必须在 1-65535 之间！"
+        exit 1
+    fi
 fi
 
 # ---------- 4. 备份配置 ----------
@@ -62,6 +109,7 @@ current_port=$(grep -E "^Port " /etc/ssh/sshd_config | head -n 1 | awk '{print $
 if test -z "$current_port"; then
     current_port=22
 fi
+
 echo "当前SSH端口为: $current_port"
 echo "想要修改的SSH端口为: $new_port"
 
@@ -78,6 +126,7 @@ sed -i "/^Port $new_port\$/d" /etc/ssh/sshd_config
 if ! grep -qE "^Port " /etc/ssh/sshd_config; then
     echo "Port $current_port" >> /etc/ssh/sshd_config
 fi
+
 echo "Port $new_port" >> /etc/ssh/sshd_config
 
 echo "---- 临时配置（新旧端口同时监听）----"
@@ -115,7 +164,12 @@ echo "现在请在新窗口用 $new_port 端口登录测试一次。"
 echo "测试成功后，回来按回车，脚本会关闭 $current_port 端口，只留 $new_port。"
 echo "如果新端口连不上，直接按 Ctrl+C 退出，$current_port 端口还留着，不会被锁在外面。"
 printf "测试成功了？按回车继续关闭旧端口："
-read dummy
+if ! read_line dummy; then
+    echo ""
+    echo "没有收到确认，旧端口 $current_port 保持开启，不做任何改动，退出。"
+    echo "想继续关旧端口时，重新运行一次脚本即可。"
+    exit 0
+fi
 
 # ---------- 9. 只留新端口 ----------
 sed -i "/^Port /d" /etc/ssh/sshd_config
