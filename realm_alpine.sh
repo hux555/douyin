@@ -92,7 +92,7 @@ add_rule() {
     read_line listen
     [ -z "$listen" ] && listen="0.0.0.0:33748"
     while [ -z "$remote" ]; do
-        printf "转发目标（格式 主机:端口，例如 ipv6-aktw.4465656.xyz:33748）："
+        printf "转发目标（格式 主机:端口）："
         read_line remote
     done
     {
