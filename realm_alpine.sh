@@ -18,6 +18,8 @@ REALM_VER="v2.9.6"
 REALM_DIR="${REALM_DIR:-/root/realm}"
 INITD_DIR="${INITD_DIR:-/etc/init.d}"
 SERVICE_FILE="$INITD_DIR/realm"
+# 快捷键：装好后输入 realm 就进控制台（默认 /usr/local/bin/realm）
+SHORTCUT_PATH="${SHORTCUT_PATH:-/usr/local/bin/realm}"
 CONFIG="$REALM_DIR/config.toml"
 BIN="$REALM_DIR/realm"
 URL="https://github.com/zhboner/realm/releases/download/$REALM_VER/realm-x86_64-unknown-linux-musl.tar.gz"
@@ -137,6 +139,20 @@ show_status() {
     tail -n 20 /var/log/realm.log 2>/dev/null || echo "（没有日志文件）"
 }
 
+# ---------- 装快捷键：输入 realm 就进控制台 ----------
+install_shortcut() {
+    script_path="$(readlink -f "$0" 2>/dev/null || echo "$0")"
+    if [ ! -f "$script_path" ]; then
+        echo "找不到脚本自己（$script_path），快捷键没装上。"
+        echo "手动装一次：cp realm_alpine.sh /usr/local/bin/realm && chmod +x /usr/local/bin/realm"
+        return 1
+    fi
+    mkdir -p "$(dirname "$SHORTCUT_PATH")"
+    cp "$script_path" "$SHORTCUT_PATH"
+    chmod +x "$SHORTCUT_PATH"
+    echo "已安装快捷键：以后输入 realm 就进控制台。"
+}
+
 # ---------- 1. 安装 / 更新 ----------
 do_install() {
     install_deps
@@ -173,6 +189,7 @@ do_install() {
     rc-service realm restart
     sleep 1
     show_status
+    install_shortcut
 }
 
 # ---------- 7. 卸载 ----------
@@ -202,8 +219,9 @@ menu() {
         echo "5. 重启 realm"
         echo "6. 停止 realm"
         echo "7. 卸载 realm"
+        echo "8. 安装 realm 快捷键（输入 realm 进控制台）"
         echo "0. 退出"
-        printf "选一个 [0-7]: "
+        printf "选一个 [0-8]: "
         read_line choice
         case "$choice" in
             1) do_install ;;
@@ -220,8 +238,9 @@ menu() {
             5) rc-service realm restart; show_status ;;
             6) rc-service realm stop ;;
             7) do_uninstall ;;
+            8) install_shortcut ;;
             0) echo "退出。"; exit 0 ;;
-            *) echo "无效选择，输入 0-7。" ;;
+            *) echo "无效选择，输入 0-8。" ;;
         esac
     done
 }
